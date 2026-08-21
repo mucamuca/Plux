@@ -67,45 +67,15 @@ Plux/
 └── LICENSE
 ```
 
-## 🚀 Deploy
-
-### 1. Backend no Render
-
-1. Acesse [render.com](https://render.com) e faça login com o GitHub
-2. **New +** → **Web Service** → conecte este repositório
-3. **Root Directory:** `plux-api`
-4. O `render.yaml` configura tudo automaticamente — escolha o plano **Free**
-5. Após o deploy, copie a URL gerada (ex: `https://plux-api-xxxx.onrender.com`)
-
-### 2. Frontend no Vercel
-
-1. Acesse [vercel.com](https://vercel.com) e faça login com o GitHub
-2. **Add New...** → **Project** → importe este repositório
-3. **Root Directory:** `plux-frontend`
-4. **Framework Preset:** Other
-5. Clique em **Deploy**
-
-### 3. Conectando os dois
-
-| Onde | Variável | Valor |
-|:----:|:--------:|:-----:|
-| `plux-frontend/script.js` (linha 7) | `API_URL` | URL do Render |
-| Render → Environment | `FRONTEND_URL` | URL do Vercel |
-
-> ⚠️ **Sem configurar o `FRONTEND_URL` no Render**, o navegador vai bloquear as requisições (erro de CORS).
-
-> 💤 **Primeira requisição pode demorar ~30s** no plano gratuito do Render — o servidor dorme após 15 min sem uso.
-
 ## 🛠️ Tecnologias
 
 <div align="center">
 
-| Frontend | Backend | Hospedagem |
-|:--------:|:-------:|:----------:|
-| HTML5 | Python 3.11 | Vercel |
-| CSS3 | Flask | Render |
-| JavaScript | yt-dlp | — |
-| — | Gunicorn | — |
+| Frontend | Backend |
+|:--------:|:-------:|
+| HTML5 | Python 3.11 |
+| CSS3 | Flask |
+| JavaScript | yt-dlp |
 
 </div>
 
