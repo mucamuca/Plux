@@ -83,10 +83,6 @@ Plux/
 
 Este projeto está sob a licença [MIT](LICENSE).
 
----
+## ✍️ Autoria
 
-<div align="center">
-
-**Feito por [mucamuca](https://github.com/mucamuca)**
-
-</div>
+**Murilo Roque** — [@mucamuca](https://github.com/mucamuca)
