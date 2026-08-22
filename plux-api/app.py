@@ -13,9 +13,24 @@ app = Flask(__name__)
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "*")
 CORS(app, origins=[FRONTEND_URL] if FRONTEND_URL != "*" else "*")
 
-COOKIES_FILE = os.path.join(os.path.dirname(__file__), "cookies.txt")
-if not os.path.exists(COOKIES_FILE):
-    COOKIES_FILE = None
+def _resolver_cookies():
+    """Cookies vêm da variável YT_COOKIES; o arquivo local é só fallback local."""
+    conteudo = os.environ.get("YT_COOKIES", "").strip()
+    if conteudo:
+        if not conteudo.startswith("# Netscape"):
+            conteudo = "# Netscape HTTP Cookie File\n" + conteudo
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False, encoding="utf-8", newline="\n"
+        )
+        tmp.write(conteudo.replace("\r\n", "\n").rstrip("\n") + "\n")
+        tmp.close()
+        return tmp.name
+
+    local = os.path.join(os.path.dirname(__file__), "cookies.txt")
+    return local if os.path.exists(local) else None
+
+
+COOKIES_FILE = _resolver_cookies()
 
 try:
     import imageio_ffmpeg
@@ -102,7 +117,12 @@ def apagar_depois(caminho, atraso=300):
 
 @app.route("/")
 def health():
-    return jsonify({"status": "ok", "service": "plux-api", "ffmpeg": bool(FFMPEG_PATH)})
+    return jsonify({
+        "status": "ok",
+        "service": "plux-api",
+        "ffmpeg": bool(FFMPEG_PATH),
+        "cookies": bool(COOKIES_FILE),
+    })
 
 
 @app.route("/api/info", methods=["POST"])
