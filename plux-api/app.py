@@ -210,6 +210,52 @@ def health():
     })
 
 
+@app.route("/api/verbose")
+def verbose():
+    """Roda uma extração com log completo do yt-dlp, pra ver o que ele faz."""
+    url = request.args.get("url", "https://www.youtube.com/watch?v=jFWnVdsSgxs")
+    client = request.args.get("client", "web")
+
+    linhas = []
+
+    class Logger:
+        def debug(self, m): linhas.append(m)
+        def info(self, m): linhas.append(m)
+        def warning(self, m): linhas.append("AVISO: " + m)
+        def error(self, m): linhas.append("ERRO: " + m)
+
+    opts = base_opts([client])
+    opts.update({
+        "quiet": False,
+        "verbose": True,
+        "logger": Logger(),
+        "ignore_no_formats_error": True,
+    })
+    if COOKIES_FILE:
+        opts["cookiefile"] = COOKIES_FILE
+
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False) or {}
+        linhas.append("--- FORMATOS ---")
+        for f in info.get("formats") or []:
+            linhas.append(
+                f"{f.get('format_id')} | {f.get('ext')} | v={f.get('vcodec')} "
+                f"| a={f.get('acodec')} | h={f.get('height')}"
+            )
+    except Exception as e:
+        linhas.append("EXCECAO: " + str(e))
+
+    # Plugins carregados pelo yt-dlp (o PO Token vem de um deles)
+    try:
+        import yt_dlp_plugins
+        linhas.append("plugins path: " + str(list(yt_dlp_plugins.__path__)))
+    except Exception as e:
+        linhas.append("yt_dlp_plugins ausente: " + str(e))
+
+    return app.response_class("\n".join(linhas), mimetype="text/plain")
+
+
 @app.route("/api/pot-log")
 def pot_log():
     """Log de inicialização do gerador de PO Token."""
