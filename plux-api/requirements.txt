@@ -1,6 +1,7 @@
 flask
 flask-cors
 yt-dlp
+yt-dlp-ejs
 gunicorn
 imageio-ffmpeg
 bgutil-ytdlp-pot-provider

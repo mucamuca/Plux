@@ -181,6 +181,15 @@ def limpar_nome(nome):
     return nome[:120] or "video"
 
 
+def _tem_ejs():
+    """Scripts solucionadores do desafio JS do YouTube."""
+    try:
+        import yt_dlp_ejs  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
 def pot_ativo():
     """O gerador de PO Token escuta em 127.0.0.1:4416 dentro do container."""
     import socket
@@ -207,6 +216,10 @@ def health():
         "cookies": bool(COOKIES_FILE),
         "yt_dlp": getattr(yt_dlp.version, "__version__", "?"),
         "pot": pot_ativo(),
+        "deno": bool(shutil.which("deno")),
+        "node": bool(shutil.which("node")),
+        "ejs": _tem_ejs(),
+        "build": os.environ.get("RENDER_GIT_COMMIT", "?")[:7],
     })
 
 
