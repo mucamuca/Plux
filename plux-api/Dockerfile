@@ -11,6 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# O yt-dlp usa Deno para resolver o desafio "n" das assinaturas do YouTube.
+# Sem ele os formatos de midia sao descartados.
+RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh -s -- --yes \
+    && deno --version
+
 WORKDIR /app
 
 COPY requirements.txt .
