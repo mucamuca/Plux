@@ -20,6 +20,17 @@
 
 </div>
 
+## 🖼️ Apresentação
+
+<div align="center">
+
+<img src="docs/plux-interface.png" width="420" alt="Interface do Plux">
+
+</div>
+
+Cole a URL, escolha entre **MP4** e **MP3**, selecione a qualidade e baixe. A plataforma é
+detectada automaticamente pelo link, e o histórico dos últimos downloads fica salvo no navegador.
+
 ## ⚡ Funcionalidades
 
 | Recurso | Descrição |
