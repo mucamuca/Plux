@@ -83,8 +83,47 @@ QUALITY_FORMATS = {
 AUDIO_BITRATES = {"320": "320", "192": "192", "128": "128", "best": "320"}
 
 
+def _cookies_sem_rotativos():
+    """Versão dos cookies sem os __Secure-*PSIDTS, que expiram em minutos."""
+    if not COOKIES_FILE:
+        return None
+    try:
+        linhas = []
+        with open(COOKIES_FILE, encoding="utf-8") as f:
+            for linha in f:
+                campos = linha.split("\t")
+                if len(campos) >= 7 and campos[5].endswith("PSIDTS"):
+                    continue
+                linhas.append(linha)
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False, encoding="utf-8", newline="\n"
+        )
+        tmp.writelines(linhas)
+        tmp.close()
+        return tmp.name
+    except Exception:
+        return None
+
+
+COOKIES_SEM_ROTATIVOS = _cookies_sem_rotativos()
+
+
+# (cookies a usar, clientes) — tentados nesta ordem até um funcionar.
+def _estrategias():
+    return [
+        (COOKIES_FILE, ["web_safari"]),
+        (COOKIES_FILE, ["mweb"]),
+        (COOKIES_SEM_ROTATIVOS, ["web_safari"]),
+        (COOKIES_SEM_ROTATIVOS, ["tv"]),
+        (None, ["tv"]),
+        (None, ["web_safari"]),
+        (None, ["mweb"]),
+        (COOKIES_FILE, ["tv"]),
+    ]
+
+
 def extrair(url, download=False, extra=None):
-    """Extrai info do vídeo. No YouTube, tenta cada cliente até um responder."""
+    """Extrai info do vídeo. No YouTube, varre combinações de cookie+cliente."""
     if detectar_plataforma(url) != "youtube":
         opts = base_opts()
         if extra:
@@ -93,8 +132,12 @@ def extrair(url, download=False, extra=None):
             return ydl.extract_info(url, download=download)
 
     ultimo_erro = None
-    for clients in PLAYER_CLIENTS:
+    for cookies, clients in _estrategias():
         opts = base_opts(clients)
+        if cookies:
+            opts["cookiefile"] = cookies
+        else:
+            opts.pop("cookiefile", None)
         if extra:
             opts.update(extra)
         try:
@@ -165,6 +208,38 @@ def health():
         "yt_dlp": getattr(yt_dlp.version, "__version__", "?"),
         "clients": [c[0] for c in PLAYER_CLIENTS],
     })
+
+
+@app.route("/api/diag")
+def diagnostico():
+    """Testa cada combinação cookie+cliente e diz qual funciona."""
+    url = request.args.get(
+        "url", "https://www.youtube.com/watch?v=jFWnVdsSgxs"
+    )
+    nomes = {
+        id(COOKIES_FILE): "cookies",
+        id(COOKIES_SEM_ROTATIVOS): "cookies-sem-sidts",
+        id(None): "sem-cookies",
+    }
+
+    resultados = []
+    for cookies, clients in _estrategias():
+        opts = base_opts(clients)
+        if cookies:
+            opts["cookiefile"] = cookies
+        else:
+            opts.pop("cookiefile", None)
+        rotulo = f"{nomes.get(id(cookies), '?')} + {clients[0]}"
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+            resultados.append({"estrategia": rotulo, "ok": True,
+                               "titulo": (info or {}).get("title")})
+        except Exception as e:
+            resultados.append({"estrategia": rotulo, "ok": False,
+                               "erro": str(e)[:160]})
+
+    return jsonify({"url": url, "resultados": resultados})
 
 
 @app.route("/api/info", methods=["POST"])
