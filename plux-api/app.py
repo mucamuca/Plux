@@ -1,4 +1,5 @@
 import os
+import tempfile
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import yt_dlp
@@ -7,6 +8,14 @@ app = Flask(__name__)
 
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "*")
 CORS(app, origins=[FRONTEND_URL] if FRONTEND_URL != "*" else "*")
+
+COOKIES_FILE = None
+cookies_content = os.environ.get("YT_COOKIES", "")
+if cookies_content:
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
+    tmp.write(cookies_content)
+    tmp.close()
+    COOKIES_FILE = tmp.name
 
 QUALITY_FORMATS = {
     "2160": "bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/best[height<=2160]",
@@ -60,6 +69,8 @@ def video_info():
 
     try:
         opts = {"quiet": True, "no_warnings": True}
+        if COOKIES_FILE:
+            opts["cookiefile"] = COOKIES_FILE
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
@@ -127,6 +138,8 @@ def download():
             "no_warnings": True,
             "format": fmt,
         }
+        if COOKIES_FILE:
+            opts["cookiefile"] = COOKIES_FILE
 
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
