@@ -32,28 +32,18 @@ def _resolver_cookies():
 
 COOKIES_FILE = _resolver_cookies()
 
-try:
-    import imageio_ffmpeg
-    FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
-except Exception:
-    FFMPEG_PATH = None
+FFMPEG_PATH = shutil.which("ffmpeg")
+if not FFMPEG_PATH:
+    try:
+        import imageio_ffmpeg
+        FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        FFMPEG_PATH = None
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
-
-
-# O YouTube derruba clientes de player de tempos em tempos, e qual deles
-# funciona muda conforme o IP do servidor. Tentamos em cascata.
-PLAYER_CLIENTS = [
-    ["web_safari"],
-    ["mweb"],
-    ["tv"],
-    ["web"],
-    ["web_embedded"],
-    ["tv_embedded"],
-]
 
 
 def base_opts(clients=None):
@@ -111,14 +101,14 @@ COOKIES_SEM_ROTATIVOS = _cookies_sem_rotativos()
 # (cookies a usar, clientes) — tentados nesta ordem até um funcionar.
 def _estrategias():
     return [
+        (COOKIES_FILE, ["web"]),
         (COOKIES_FILE, ["web_safari"]),
         (COOKIES_FILE, ["mweb"]),
-        (COOKIES_SEM_ROTATIVOS, ["web_safari"]),
-        (COOKIES_SEM_ROTATIVOS, ["tv"]),
-        (None, ["tv"]),
+        (None, ["web"]),
         (None, ["web_safari"]),
-        (None, ["mweb"]),
+        (COOKIES_SEM_ROTATIVOS, ["web"]),
         (COOKIES_FILE, ["tv"]),
+        (None, ["tv"]),
     ]
 
 
@@ -191,6 +181,16 @@ def limpar_nome(nome):
     return nome[:120] or "video"
 
 
+def pot_ativo():
+    """O gerador de PO Token escuta em 127.0.0.1:4416 dentro do container."""
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", 4416), timeout=2):
+            return True
+    except Exception:
+        return False
+
+
 def apagar_depois(caminho, atraso=300):
     def run():
         time.sleep(atraso)
@@ -206,7 +206,7 @@ def health():
         "ffmpeg": bool(FFMPEG_PATH),
         "cookies": bool(COOKIES_FILE),
         "yt_dlp": getattr(yt_dlp.version, "__version__", "?"),
-        "clients": [c[0] for c in PLAYER_CLIENTS],
+        "pot": pot_ativo(),
     })
 
 
