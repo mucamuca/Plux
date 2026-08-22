@@ -12,6 +12,23 @@ COOKIES_FILE = os.path.join(os.path.dirname(__file__), "cookies.txt")
 if not os.path.exists(COOKIES_FILE):
     COOKIES_FILE = None
 
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+
+
+def base_opts():
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "user_agent": USER_AGENT,
+        "extractor_args": {"youtube": {"player_client": ["tv", "web_safari", "web"]}},
+    }
+    if COOKIES_FILE:
+        opts["cookiefile"] = COOKIES_FILE
+    return opts
+
 QUALITY_FORMATS = {
     "2160": "bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/best[height<=2160]",
     "1080": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]",
@@ -63,9 +80,7 @@ def video_info():
     plataforma = detectar_plataforma(url)
 
     try:
-        opts = {"quiet": True, "no_warnings": True}
-        if COOKIES_FILE:
-            opts["cookiefile"] = COOKIES_FILE
+        opts = base_opts()
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
@@ -128,13 +143,8 @@ def download():
         else:
             fmt = QUALITY_FORMATS.get(quality, QUALITY_FORMATS["best"])
 
-        opts = {
-            "quiet": True,
-            "no_warnings": True,
-            "format": fmt,
-        }
-        if COOKIES_FILE:
-            opts["cookiefile"] = COOKIES_FILE
+        opts = base_opts()
+        opts["format"] = fmt
 
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
