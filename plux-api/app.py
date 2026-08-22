@@ -162,6 +162,8 @@ def health():
         "service": "plux-api",
         "ffmpeg": bool(FFMPEG_PATH),
         "cookies": bool(COOKIES_FILE),
+        "yt_dlp": getattr(yt_dlp.version, "__version__", "?"),
+        "clients": [c[0] for c in PLAYER_CLIENTS],
     })
 
 
