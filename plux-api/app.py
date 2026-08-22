@@ -230,11 +230,23 @@ def diagnostico():
         else:
             opts.pop("cookiefile", None)
         rotulo = f"{nomes.get(id(cookies), '?')} + {clients[0]}"
+        # Sem restrição de formato: queremos saber o que o YouTube oferece.
+        opts["ignore_no_formats_error"] = True
+        opts["format"] = "best/worst/bestaudio/bestvideo"
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-            resultados.append({"estrategia": rotulo, "ok": True,
-                               "titulo": (info or {}).get("title")})
+                info = ydl.extract_info(url, download=False) or {}
+            formatos = [
+                f"{f.get('format_id')}:{f.get('height') or f.get('acodec')}"
+                for f in (info.get("formats") or [])
+            ]
+            resultados.append({
+                "estrategia": rotulo,
+                "ok": True,
+                "titulo": info.get("title"),
+                "qtd_formatos": len(formatos),
+                "formatos": formatos[:25],
+            })
         except Exception as e:
             resultados.append({"estrategia": rotulo, "ok": False,
                                "erro": str(e)[:160]})
