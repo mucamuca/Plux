@@ -210,6 +210,17 @@ def health():
     })
 
 
+@app.route("/api/pot-log")
+def pot_log():
+    """Log de inicialização do gerador de PO Token."""
+    try:
+        with open("/tmp/pot.log", encoding="utf-8", errors="replace") as f:
+            conteudo = f.read()
+    except Exception as e:
+        conteudo = f"(sem log: {e})"
+    return app.response_class(conteudo, mimetype="text/plain")
+
+
 @app.route("/api/diag")
 def diagnostico():
     """Testa cada combinação cookie+cliente e diz qual funciona."""
