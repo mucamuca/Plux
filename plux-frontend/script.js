@@ -227,12 +227,20 @@ function renderHistory() {
 }
 
 // --- Download ---
+function montarLinkArquivo(url, quality, mode, index) {
+  const p = new URLSearchParams({ url, quality, mode });
+  if (index) p.set('index', index);
+  return API_URL + '/api/file?' + p.toString();
+}
+
+// Usa um iframe escondido: o servidor responde com Content-Disposition:
+// attachment, então o navegador salva o arquivo sem sair da página.
 function triggerDownload(url) {
-  const a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank';
-  a.rel = 'noopener';
-  a.click();
+  const f = document.createElement('iframe');
+  f.style.display = 'none';
+  f.src = url;
+  document.body.appendChild(f);
+  setTimeout(() => f.remove(), 10 * 60 * 1000);
 }
 
 let lastVideoInfo = null;
@@ -305,10 +313,10 @@ async function iniciar() {
     $('videoMeta').textContent = metaParts.join('  •  ');
     $('videoCard').classList.add('show');
 
-    // 2. Extrair link direto
+    // 2. Validar o link antes de baixar
     const quality = $('quality').value;
-    btn.innerHTML = '<span class="spinner"></span> Extraindo link...';
-    setStatus('Obtendo link de download...', 'loading');
+    btn.innerHTML = '<span class="spinner"></span> Preparando...';
+    setStatus('Preparando download...', 'loading');
 
     const dlRes = await fetch(API_URL + '/api/download', {
       method: 'POST',
@@ -323,12 +331,13 @@ async function iniciar() {
       return;
     }
 
-    // 3. Iniciar downloads no navegador
+    // 3. O servidor baixa e devolve o arquivo pronto
     if (dlData.links && dlData.links.length > 0) {
       dlData.links.forEach((link, i) => {
-        if (link.url) {
-          setTimeout(() => triggerDownload(link.url), i * 500);
-        }
+        setTimeout(
+          () => triggerDownload(montarLinkArquivo(url, quality, currentMode, link.index)),
+          i * 1000
+        );
       });
 
       let qualityLabel;
@@ -347,7 +356,12 @@ async function iniciar() {
       });
 
       const count = dlData.links.length;
-      setStatus(count > 1 ? `${count} downloads iniciados!` : 'Download iniciado!', 'success');
+      setStatus(
+        count > 1
+          ? `${count} downloads iniciados! O servidor está processando, aguarde.`
+          : 'Download iniciado! O servidor está processando, aguarde.',
+        'success'
+      );
     } else {
       setStatus('Nenhum link de download encontrado', 'error');
     }

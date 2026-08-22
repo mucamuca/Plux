@@ -1,5 +1,10 @@
 import os
-from flask import Flask, request, jsonify
+import re
+import shutil
+import tempfile
+import threading
+import time
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import yt_dlp
 
@@ -11,6 +16,12 @@ CORS(app, origins=[FRONTEND_URL] if FRONTEND_URL != "*" else "*")
 COOKIES_FILE = os.path.join(os.path.dirname(__file__), "cookies.txt")
 if not os.path.exists(COOKIES_FILE):
     COOKIES_FILE = None
+
+try:
+    import imageio_ffmpeg
+    FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
+except Exception:
+    FFMPEG_PATH = None
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -27,23 +38,21 @@ def base_opts():
     }
     if COOKIES_FILE:
         opts["cookiefile"] = COOKIES_FILE
+    if FFMPEG_PATH:
+        opts["ffmpeg_location"] = FFMPEG_PATH
     return opts
 
+
 QUALITY_FORMATS = {
-    "2160": "bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/best[height<=2160]",
-    "1080": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]",
-    "720":  "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]",
-    "480":  "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480]",
-    "360":  "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360]",
-    "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+    "2160": "bestvideo[height<=2160]+bestaudio/best[height<=2160]",
+    "1080": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+    "720":  "bestvideo[height<=720]+bestaudio/best[height<=720]",
+    "480":  "bestvideo[height<=480]+bestaudio/best[height<=480]",
+    "360":  "bestvideo[height<=360]+bestaudio/best[height<=360]",
+    "best": "bestvideo+bestaudio/best",
 }
 
-AUDIO_FORMATS = {
-    "320": "bestaudio[ext=m4a]/bestaudio",
-    "192": "bestaudio[ext=m4a]/bestaudio",
-    "128": "bestaudio[ext=m4a]/bestaudio",
-    "best": "bestaudio[ext=m4a]/bestaudio",
-}
+AUDIO_BITRATES = {"320": "320", "192": "192", "128": "128", "best": "320"}
 
 
 def detectar_plataforma(url):
@@ -64,9 +73,36 @@ def detectar_tipo_instagram(url):
     return "post"
 
 
+def limpar_erro(msg):
+    """Deixa a mensagem de erro do yt-dlp legível pro usuário."""
+    if "Sign in to confirm" in msg or "not a bot" in msg:
+        return ("O YouTube bloqueou o servidor. Os cookies precisam ser "
+                "reexportados de uma janela anônima.")
+    if "Private video" in msg or "private" in msg.lower():
+        return "Esse vídeo é privado."
+    if "Video unavailable" in msg:
+        return "Vídeo indisponível."
+    msg = re.sub(r"^ERROR:\s*", "", msg)
+    msg = re.sub(r"\[[a-zA-Z:]+\]\s*[\w-]+:\s*", "", msg)
+    return msg.split(". See ")[0].split(". Use ")[0]
+
+
+def limpar_nome(nome):
+    nome = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", nome)
+    nome = re.sub(r"\s+", " ", nome).strip()
+    return nome[:120] or "video"
+
+
+def apagar_depois(caminho, atraso=300):
+    def run():
+        time.sleep(atraso)
+        shutil.rmtree(caminho, ignore_errors=True)
+    threading.Thread(target=run, daemon=True).start()
+
+
 @app.route("/")
 def health():
-    return jsonify({"status": "ok", "service": "plux-api"})
+    return jsonify({"status": "ok", "service": "plux-api", "ffmpeg": bool(FFMPEG_PATH)})
 
 
 @app.route("/api/info", methods=["POST"])
@@ -80,8 +116,7 @@ def video_info():
     plataforma = detectar_plataforma(url)
 
     try:
-        opts = base_opts()
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        with yt_dlp.YoutubeDL(base_opts()) as ydl:
             info = ydl.extract_info(url, download=False)
 
             formats = info.get("formats") or []
@@ -124,53 +159,110 @@ def video_info():
             })
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": limpar_erro(str(e))}), 400
+
+
+@app.route("/api/file")
+def baixar_arquivo():
+    """Baixa no servidor e entrega o arquivo pronto pro navegador."""
+    url = request.args.get("url", "")
+    quality = request.args.get("quality", "best")
+    mode = request.args.get("mode", "video")
+    index = request.args.get("index", type=int)
+
+    if not url:
+        return jsonify({"error": "URL não fornecida"}), 400
+
+    pasta = tempfile.mkdtemp(prefix="plux-")
+
+    try:
+        opts = base_opts()
+        opts["outtmpl"] = os.path.join(pasta, "%(title).100s.%(ext)s")
+        opts["restrictfilenames"] = False
+
+        if index:
+            opts["playlist_items"] = str(index)
+        else:
+            opts["noplaylist"] = True
+
+        if mode == "audio":
+            opts["format"] = "bestaudio/best"
+            if FFMPEG_PATH:
+                opts["postprocessors"] = [{
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": AUDIO_BITRATES.get(quality, "320"),
+                }]
+        else:
+            opts["format"] = QUALITY_FORMATS.get(quality, QUALITY_FORMATS["best"])
+            if FFMPEG_PATH:
+                opts["merge_output_format"] = "mp4"
+
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+
+        arquivos = []
+        for raiz, _, nomes in os.walk(pasta):
+            for n in nomes:
+                if n.endswith((".part", ".ytdl")):
+                    continue
+                arquivos.append(os.path.join(raiz, n))
+
+        if not arquivos:
+            shutil.rmtree(pasta, ignore_errors=True)
+            return jsonify({"error": "Não foi possível baixar o arquivo"}), 400
+
+        caminho = max(arquivos, key=os.path.getsize)
+        ext = os.path.splitext(caminho)[1] or (".mp3" if mode == "audio" else ".mp4")
+
+        titulo = info.get("title") or "video"
+        if info.get("entries"):
+            entradas = list(info["entries"])
+            if entradas:
+                titulo = entradas[0].get("title") or titulo
+
+        nome = limpar_nome(titulo) + ext
+        apagar_depois(pasta)
+
+        return send_file(
+            caminho,
+            as_attachment=True,
+            download_name=nome,
+            mimetype="audio/mpeg" if ext == ".mp3" else "video/mp4",
+        )
+
+    except Exception as e:
+        shutil.rmtree(pasta, ignore_errors=True)
+        return jsonify({"error": limpar_erro(str(e))}), 400
 
 
 @app.route("/api/download", methods=["POST"])
 def download():
+    """Valida o link antes do download e informa quantos itens existem."""
     data = request.get_json() or {}
     url = data.get("url", "")
-    quality = data.get("quality", "best")
-    mode = data.get("mode", "video")
 
     if not url:
         return jsonify({"error": "URL não fornecida"}), 400
 
     try:
-        if mode == "audio":
-            fmt = AUDIO_FORMATS.get(quality, AUDIO_FORMATS["best"])
-        else:
-            fmt = QUALITY_FORMATS.get(quality, QUALITY_FORMATS["best"])
-
-        opts = base_opts()
-        opts["format"] = fmt
-
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        with yt_dlp.YoutubeDL(base_opts()) as ydl:
             info = ydl.extract_info(url, download=False)
 
-            entries = info.get("entries")
-            items = list(entries) if entries else [info]
+        entries = info.get("entries")
+        items = list(entries) if entries else [info]
 
-            download_links = []
-            for item in items:
-                direct_url = item.get("url")
-                if not direct_url:
-                    requested = item.get("requested_formats")
-                    if requested:
-                        direct_url = requested[0].get("url")
+        links = []
+        for i, item in enumerate(items, start=1):
+            links.append({
+                "title": item.get("title") or "video",
+                "index": i if entries else None,
+            })
 
-                ext = "mp3" if mode == "audio" else (item.get("ext") or "mp4")
-                download_links.append({
-                    "title": item.get("title") or "video",
-                    "url": direct_url,
-                    "ext": ext,
-                })
-
-        return jsonify({"links": download_links})
+        return jsonify({"links": links})
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": limpar_erro(str(e))}), 400
 
 
 if __name__ == "__main__":
