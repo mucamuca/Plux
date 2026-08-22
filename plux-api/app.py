@@ -44,13 +44,26 @@ USER_AGENT = (
 )
 
 
-def base_opts():
+# O YouTube derruba clientes de player de tempos em tempos, e qual deles
+# funciona muda conforme o IP do servidor. Tentamos em cascata.
+PLAYER_CLIENTS = [
+    ["web_safari"],
+    ["mweb"],
+    ["tv"],
+    ["web"],
+    ["web_embedded"],
+    ["tv_embedded"],
+]
+
+
+def base_opts(clients=None):
     opts = {
         "quiet": True,
         "no_warnings": True,
         "user_agent": USER_AGENT,
-        "extractor_args": {"youtube": {"player_client": ["tv", "web_safari", "web"]}},
     }
+    if clients:
+        opts["extractor_args"] = {"youtube": {"player_client": list(clients)}}
     if COOKIES_FILE:
         opts["cookiefile"] = COOKIES_FILE
     if FFMPEG_PATH:
@@ -68,6 +81,31 @@ QUALITY_FORMATS = {
 }
 
 AUDIO_BITRATES = {"320": "320", "192": "192", "128": "128", "best": "320"}
+
+
+def extrair(url, download=False, extra=None):
+    """Extrai info do vídeo. No YouTube, tenta cada cliente até um responder."""
+    if detectar_plataforma(url) != "youtube":
+        opts = base_opts()
+        if extra:
+            opts.update(extra)
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            return ydl.extract_info(url, download=download)
+
+    ultimo_erro = None
+    for clients in PLAYER_CLIENTS:
+        opts = base_opts(clients)
+        if extra:
+            opts.update(extra)
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=download)
+            if info:
+                return info
+        except Exception as e:
+            ultimo_erro = e
+
+    raise ultimo_erro or Exception("Não foi possível extrair o vídeo")
 
 
 def detectar_plataforma(url):
@@ -97,6 +135,8 @@ def limpar_erro(msg):
         return "Esse vídeo é privado."
     if "Video unavailable" in msg:
         return "Vídeo indisponível."
+    if "needs to be reloaded" in msg:
+        return "O YouTube recusou a sessão do servidor. Tente novamente."
     msg = re.sub(r"^ERROR:\s*", "", msg)
     msg = re.sub(r"\[[a-zA-Z:]+\]\s*[\w-]+:\s*", "", msg)
     return msg.split(". See ")[0].split(". Use ")[0]
@@ -136,47 +176,45 @@ def video_info():
     plataforma = detectar_plataforma(url)
 
     try:
-        with yt_dlp.YoutubeDL(base_opts()) as ydl:
-            info = ydl.extract_info(url, download=False)
+        info = extrair(url, download=False)
 
-            formats = info.get("formats") or []
-            resolutions = sorted(set(
-                f.get("height") for f in formats
-                if f.get("height") and f.get("vcodec", "none") != "none"
-            ), reverse=True)
+        formats = info.get("formats") or []
+        resolutions = sorted(set(
+            f.get("height") for f in formats
+            if f.get("height") and f.get("vcodec", "none") != "none"
+        ), reverse=True)
 
-            tipo = ""
-            if plataforma == "instagram":
-                tipo = detectar_tipo_instagram(url)
+        tipo = ""
+        if plataforma == "instagram":
+            tipo = detectar_tipo_instagram(url)
 
-            entries = info.get("entries")
-            if entries:
-                items = list(entries)
-                count = len(items)
-                first = items[0] if items else info
-                return jsonify({
-                    "title": info.get("title") or first.get("title") or "Stories",
-                    "channel": info.get("channel") or first.get("uploader") or first.get("creator"),
-                    "duration": first.get("duration") or 0,
-                    "thumbnail": first.get("thumbnail") or info.get("thumbnail"),
-                    "views": first.get("view_count") or 0,
-                    "platform": plataforma,
-                    "type": tipo,
-                    "count": count,
-                    "resolutions": resolutions,
-                })
-
+        entries = info.get("entries")
+        if entries:
+            items = list(entries)
+            first = items[0] if items else info
             return jsonify({
-                "title": info.get("title") or info.get("description", "")[:80] or "Sem título",
-                "channel": info.get("channel") or info.get("uploader") or info.get("creator"),
-                "duration": info.get("duration") or 0,
-                "thumbnail": info.get("thumbnail"),
-                "views": info.get("view_count") or 0,
+                "title": info.get("title") or first.get("title") or "Stories",
+                "channel": info.get("channel") or first.get("uploader") or first.get("creator"),
+                "duration": first.get("duration") or 0,
+                "thumbnail": first.get("thumbnail") or info.get("thumbnail"),
+                "views": first.get("view_count") or 0,
                 "platform": plataforma,
                 "type": tipo,
-                "count": 1,
+                "count": len(items),
                 "resolutions": resolutions,
             })
+
+        return jsonify({
+            "title": info.get("title") or info.get("description", "")[:80] or "Sem título",
+            "channel": info.get("channel") or info.get("uploader") or info.get("creator"),
+            "duration": info.get("duration") or 0,
+            "thumbnail": info.get("thumbnail"),
+            "views": info.get("view_count") or 0,
+            "platform": plataforma,
+            "type": tipo,
+            "count": 1,
+            "resolutions": resolutions,
+        })
 
     except Exception as e:
         return jsonify({"error": limpar_erro(str(e))}), 400
@@ -196,30 +234,30 @@ def baixar_arquivo():
     pasta = tempfile.mkdtemp(prefix="plux-")
 
     try:
-        opts = base_opts()
-        opts["outtmpl"] = os.path.join(pasta, "%(title).100s.%(ext)s")
-        opts["restrictfilenames"] = False
+        extra = {
+            "outtmpl": os.path.join(pasta, "%(title).100s.%(ext)s"),
+            "restrictfilenames": False,
+        }
 
         if index:
-            opts["playlist_items"] = str(index)
+            extra["playlist_items"] = str(index)
         else:
-            opts["noplaylist"] = True
+            extra["noplaylist"] = True
 
         if mode == "audio":
-            opts["format"] = "bestaudio/best"
+            extra["format"] = "bestaudio/best"
             if FFMPEG_PATH:
-                opts["postprocessors"] = [{
+                extra["postprocessors"] = [{
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": "mp3",
                     "preferredquality": AUDIO_BITRATES.get(quality, "320"),
                 }]
         else:
-            opts["format"] = QUALITY_FORMATS.get(quality, QUALITY_FORMATS["best"])
+            extra["format"] = QUALITY_FORMATS.get(quality, QUALITY_FORMATS["best"])
             if FFMPEG_PATH:
-                opts["merge_output_format"] = "mp4"
+                extra["merge_output_format"] = "mp4"
 
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+        info = extrair(url, download=True, extra=extra)
 
         arquivos = []
         for raiz, _, nomes in os.walk(pasta):
@@ -266,8 +304,7 @@ def download():
         return jsonify({"error": "URL não fornecida"}), 400
 
     try:
-        with yt_dlp.YoutubeDL(base_opts()) as ydl:
-            info = ydl.extract_info(url, download=False)
+        info = extrair(url, download=False)
 
         entries = info.get("entries")
         items = list(entries) if entries else [info]
