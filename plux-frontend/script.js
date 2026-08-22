@@ -4,10 +4,11 @@ const $ = id => document.getElementById(id);
 // CONFIGURE AQUI: cole a URL do seu backend no Render
 // Exemplo: "https://plux-api.onrender.com"
 // ============================================================
-const API_URL = "https://plux-api.onrender.com";
+const API_URL = "https://plux-uubb.onrender.com";
 // ============================================================
 
 let currentPlatform = 'youtube';
+let currentMode = 'video';
 let history = JSON.parse(localStorage.getItem('dl_history') || '[]');
 let stats = JSON.parse(localStorage.getItem('dl_stats') || '{"total":0,"youtube":0,"tiktok":0,"instagram":0}');
 
@@ -33,6 +34,52 @@ const downloadIcon = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none
   <polyline points="7 10 12 15 17 10"/>
   <line x1="12" y1="15" x2="12" y2="3"/>
 </svg>`;
+
+const audioIcon = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M9 18V5l12-2v13"/>
+  <circle cx="6" cy="18" r="3"/>
+  <circle cx="18" cy="16" r="3"/>
+</svg>`;
+
+const videoQualityOptions = [
+  { value: 'best', label: 'Melhor disponível' },
+  { value: '2160', label: '4K (2160p)' },
+  { value: '1080', label: 'Full HD (1080p)' },
+  { value: '720',  label: 'HD (720p)' },
+  { value: '480',  label: 'Média (480p)' },
+  { value: '360',  label: 'Baixa (360p)' },
+];
+
+const audioQualityOptions = [
+  { value: 'best', label: 'Melhor disponível' },
+  { value: '320', label: 'Alta (320kbps)' },
+  { value: '192', label: 'Média (192kbps)' },
+  { value: '128', label: 'Baixa (128kbps)' },
+];
+
+function setMode(mode) {
+  currentMode = mode;
+  $('modeVideo').classList.toggle('active', mode === 'video');
+  $('modeAudio').classList.toggle('active', mode === 'audio');
+
+  const select = $('quality');
+  const options = mode === 'audio' ? audioQualityOptions : videoQualityOptions;
+  select.innerHTML = '';
+  options.forEach((opt, i) => {
+    const el = document.createElement('option');
+    el.value = opt.value;
+    el.textContent = opt.label;
+    if (i === 0) el.selected = true;
+    select.appendChild(el);
+  });
+
+  const btn = $('btnDownload');
+  if (mode === 'audio') {
+    btn.innerHTML = audioIcon + ' Baixar MP3';
+  } else {
+    btn.innerHTML = downloadIcon + ' Baixar vídeo';
+  }
+}
 
 // --- Platform ---
 function selectPlatform(platform) {
@@ -76,7 +123,11 @@ function setStatus(text, type = '') {
 function resetBtn() {
   const btn = $('btnDownload');
   btn.disabled = false;
-  btn.innerHTML = downloadIcon + ' Baixar vídeo';
+  if (currentMode === 'audio') {
+    btn.innerHTML = audioIcon + ' Baixar MP3';
+  } else {
+    btn.innerHTML = downloadIcon + ' Baixar vídeo';
+  }
 }
 
 // --- Paste ---
@@ -97,18 +148,11 @@ async function colarURL() {
 
 // --- Quality ---
 function updateQualityOptions(resolutions) {
+  if (currentMode === 'audio') return;
   const select = $('quality');
   const current = select.value;
-  const allOptions = [
-    { value: 'best', label: 'Melhor disponível' },
-    { value: '2160', label: '4K (2160p)' },
-    { value: '1080', label: 'Full HD (1080p)' },
-    { value: '720',  label: 'HD (720p)' },
-    { value: '480',  label: 'Média (480p)' },
-    { value: '360',  label: 'Baixa (360p)' },
-  ];
   select.innerHTML = '';
-  allOptions.forEach(opt => {
+  videoQualityOptions.forEach(opt => {
     const el = document.createElement('option');
     el.value = opt.value;
     if (opt.value === 'best') {
@@ -269,7 +313,7 @@ async function iniciar() {
     const dlRes = await fetch(API_URL + '/api/download', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, quality }),
+      body: JSON.stringify({ url, quality, mode: currentMode }),
     });
     const dlData = await dlRes.json();
 
@@ -287,7 +331,12 @@ async function iniciar() {
         }
       });
 
-      const qualityLabel = quality === 'best' ? 'Melhor' : quality + 'p';
+      let qualityLabel;
+      if (currentMode === 'audio') {
+        qualityLabel = quality === 'best' ? 'MP3' : 'MP3 ' + quality + 'kbps';
+      } else {
+        qualityLabel = quality === 'best' ? 'Melhor' : quality + 'p';
+      }
       incrementStats(platform);
       addToHistory({
         title: info.title,

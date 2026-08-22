@@ -185,6 +185,46 @@ body {
 .tab-tt { --tab-color: #00f2ea; --tab-bg: rgba(0,242,234,0.08); }
 .tab-ig { --tab-color: #e1306c; --tab-bg: rgba(225,48,108,0.08); }
 
+/* Mode toggle */
+.mode-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.mode-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 11px 0;
+  background: var(--bg-input);
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: 13px;
+  font-weight: 600;
+  color: #888;
+  font-family: 'Inter', sans-serif;
+}
+
+.mode-btn:hover {
+  border-color: #444;
+  color: #bbb;
+}
+
+.mode-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(139, 92, 246, 0.08);
+}
+
+.mode-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
 /* Input */
 .input-group {
   margin-bottom: 16px;

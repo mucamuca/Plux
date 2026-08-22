@@ -17,6 +17,13 @@ QUALITY_FORMATS = {
     "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
 }
 
+AUDIO_FORMATS = {
+    "320": "bestaudio[ext=m4a]/bestaudio",
+    "192": "bestaudio[ext=m4a]/bestaudio",
+    "128": "bestaudio[ext=m4a]/bestaudio",
+    "best": "bestaudio[ext=m4a]/bestaudio",
+}
+
 
 def detectar_plataforma(url):
     url_lower = url.lower()
@@ -104,12 +111,17 @@ def download():
     data = request.get_json() or {}
     url = data.get("url", "")
     quality = data.get("quality", "best")
+    mode = data.get("mode", "video")
 
     if not url:
         return jsonify({"error": "URL não fornecida"}), 400
 
     try:
-        fmt = QUALITY_FORMATS.get(quality, QUALITY_FORMATS["best"])
+        if mode == "audio":
+            fmt = AUDIO_FORMATS.get(quality, AUDIO_FORMATS["best"])
+        else:
+            fmt = QUALITY_FORMATS.get(quality, QUALITY_FORMATS["best"])
+
         opts = {
             "quiet": True,
             "no_warnings": True,
@@ -130,10 +142,11 @@ def download():
                     if requested:
                         direct_url = requested[0].get("url")
 
+                ext = "mp3" if mode == "audio" else (item.get("ext") or "mp4")
                 download_links.append({
                     "title": item.get("title") or "video",
                     "url": direct_url,
-                    "ext": item.get("ext") or "mp4",
+                    "ext": ext,
                 })
 
         return jsonify({"links": download_links})
