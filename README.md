@@ -96,4 +96,4 @@ Este projeto está sob a licença [MIT](LICENSE).
 
 ## ✍️ Autoria
 
-**Murilo Roque** — [@mucamuca](https://github.com/mucamuca)
+**Murilo Roque** — [@murilotroque](https://github.com/murilotroque)
